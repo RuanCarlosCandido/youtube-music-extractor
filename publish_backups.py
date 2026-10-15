@@ -74,7 +74,7 @@ def latest_snapshot(root):
     return validate_snapshot(snapshots[0].parent)
 
 
-def publish_drive(snapshot, remote if args.provider == "youtube" else remote.rstrip("/") + "/deezer"):
+def publish_drive(snapshot, remote):
     if not remote or ":" not in remote:
         raise ValueError("RCLONE_DEST must be in remote:path format")
     destination = remote.rstrip("/") + "/snapshots/" + snapshot.name
@@ -133,12 +133,14 @@ def main(argv=None):
                         help="Retry only Google Drive, without creating a snapshot or pushing GitHub")
     parser.add_argument("--snapshot", type=Path,
                         help="Specific local timestamp directory; defaults to newest")
-    parser.add_argument("--provider", choices=("youtube", "deezer"), default="youtube",\n                        help="Source of snapshot and destination namespace")\n    args = parser.parse_args(argv)
+    parser.add_argument("--provider", choices=("youtube", "deezer"), default="youtube",
+                        help="Source of snapshot and destination namespace")\n    args = parser.parse_args(argv)
     logger, logfile = setup_logger()
     logger.info("Publication started; drive_only=%s", args.drive_only)
     print(f"Publication log: {logfile}")
     try:
-        root = LOCAL_ROOT if args.provider == "youtube" else Path(os.getenv(\n            "DEEZER_SNAPSHOT_DIR", str(Path.home() / "backups/youtube-music-extractor/deezer")))\n        snapshot = validate_snapshot(args.snapshot) if args.snapshot else latest_snapshot(root)
+        root = LOCAL_ROOT if args.provider == "youtube" else Path(os.getenv(
+            "DEEZER_SNAPSHOT_DIR", str(Path.home() / "backups/youtube-music-extractor/deezer")))\n        snapshot = validate_snapshot(args.snapshot) if args.snapshot else latest_snapshot(root)
     except (OSError, ValueError, KeyError, json.JSONDecodeError) as error:
         logger.error("Local snapshot validation failed: %s", safe_error(error))
         print("Local snapshot validation failed; see log.", file=sys.stderr)
@@ -150,7 +152,7 @@ def main(argv=None):
     if remote:
         try:
             # Keep rclone output out of public console/logs; it can contain OAuth details.
-            publish_drive(snapshot, remote)
+            publish_drive(snapshot, remote if args.provider == "youtube" else remote.rstrip("/") + "/deezer")
             drive_status = "SUCCESS"
             logger.info("Drive SUCCESS: snapshot %s", snapshot.name)
         except (OSError, subprocess.CalledProcessError, ValueError) as error:
