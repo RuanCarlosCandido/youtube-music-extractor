@@ -1,5 +1,6 @@
 """Validated, versioned YouTube playlist exports."""
 import csv
+import hashlib
 import json
 import os
 import sys
@@ -30,7 +31,7 @@ PLAYLIST_IDS = [
     "PLrKAOHX96yPPH6nXcU9dT7Bklt6ZqtCsX",
 ]
 BASE_URL = "https://www.googleapis.com/youtube/v3"
-SNAPSHOT_DIR = Path(os.getenv("SNAPSHOT_DIR", "snapshots"))
+SNAPSHOT_DIR = Path(os.getenv("SNAPSHOT_DIR", "/home/ruan/backups/youtube-music-extractor"))
 CSV_FIELDS = ["playlist_id", "playlist_title", "position", "playlist_item_id",
               "music_title", "artist", "video_id", "video_url", "availability", "published_at"]
 
@@ -139,6 +140,10 @@ def save_snapshot(root, rows, playlists, previous=None):
             writer = csv.DictWriter(file, fieldnames=CSV_FIELDS)
             writer.writeheader()
             writer.writerows(rows)
+        manifest["sha256"] = {
+            name: hashlib.sha256((destination / name).read_bytes()).hexdigest()
+            for name in ("songs.json", "songs.csv")
+        }
         (destination / "manifest.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     except BaseException:

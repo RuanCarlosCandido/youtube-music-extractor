@@ -1,46 +1,80 @@
 # YouTube Music Extractor
 
-Exports the 17 configured YouTube playlists as **validated immutable backups** using
-YouTube Data API v3. Every completed snapshot lives in `snapshots/<UTC timestamp>/`.
+Validated backup of **only the 17 explicitly selected public playlists** in
+`export_youtube_music.py`. No account-wide discovery, OAuth for YouTube, or private
+playlist access is required.
 
-## Usage
+## Backup targets
 
-Python 3.10+ is required. Create an untracked `.env` with your key:
+| Destination | Location | Mechanism |
+|---|---|---|
+| Local | `/home/ruan/backups/youtube-music-extractor/<timestamp>/` | Python |
+| Google Drive | `RCLONE_DEST/snapshots/<timestamp>/` | rclone OAuth remote |
+| Public GitHub repository | `data/snapshots/<timestamp>/` | git commit/push |
+
+Each backup consists of `songs.json`, `songs.csv`, and `manifest.json`.
+The manifest includes SHA-256 hashes of both data files, item counts,
+unavailable video counts, and additions/removals compared with the prior
+local snapshot. Existing snapshots are never overwritten by the exporter.
+Historical titles remain in previous snapshots even if the videos disappear.
+A deleted/private video may lose metadata before it can first be backed up.
+
+## Setup on Linux
+
+Requires Python 3.10+, `requests`, `git`, and `rclone`. In the project root,
+create a local **untracked** `.env`:
 
 ```dotenv
-API_KEY=your_key_here
+API_KEY=YOUR_YOUTUBE_DATA_API_KEY
+SNAPSHOT_DIR=/home/ruan/backups/youtube-music-extractor
+RCLONE_DEST=gdrive:youtube-music-extractor
 ```
 
-```bash
-make run
-make test
-```
+`make run` creates a validated **local-only** snapshot. `make publish`
+copies the latest complete snapshot to Drive and commits it to GitHub.
+`make backup` performs both. `make test` runs unit tests.
 
-Use `SNAPSHOT_DIR=/path/to/backups` in your environment to change the output location.
+### Authorize Google Drive once
 
-## Output
+1. Install rclone from your Linux distribution or https://rclone.org/install/.
+2. Run `rclone config` and choose **n** (new remote); name it `gdrive`.
+3. Choose `drive` / Google Drive, use the normal OAuth browser login, and
+   approve access. Follow the interactive prompts. Prefer a scoped destination.
+4. Verify with `rclone lsd gdrive:` (and create the destination folder if needed).
 
-- `songs.json` — each playlist entry with playlist ID, entry ID, video ID,
-  title, channel, original position, URL and availability
-- `songs.csv` — the same data as CSV
-- `manifest.json` — completion status, expected counts and changes since
-  the previous snapshot (additions/removals with item details)
+The OAuth refresh token is stored in the user's rclone configuration
+(typically `~/.config/rclone/rclone.conf`), **not** in `.env`, and must never be
+committed. For a personal small backup no separate Google API key is required
+for the standard rclone OAuth flow. A custom OAuth client ID/secret is optional.
+Restrict rclone config file permissions (e.g. `chmod 600 ~/.config/rclone/rclone.conf`).
+`RCLONE_DEST` only stores a **remote name and folder**, not a credential.
 
-A single missing/incomplete playlist aborts the run: **no completed snapshot
-is created**. Deleted/private videos are retained as unavailable entries where
-the YouTube API provides their playlist entries, but their original metadata may
-not be recoverable. The `artist` field is the uploader/channel, not necessarily
-the musical artist.
+### GitHub publication
 
-**Limitations:** API-key authentication only covers playlists readable with
-that key; it does not automatically include private playlists, YouTube Music
-favorites or uploads. This tool preserves inventory, not audio files, and does
-not restore playlists. Back up the snapshot directory separately.
+`make publish` creates files under **`data/snapshots/`** on the current
+checked-out branch, commits **only that new backup directory**, and pushes to
+`origin` using your existing git authentication (SSH or credential helper).
+It never needs a GitHub token in `.env`. GitHub branch protections still apply.
+It does not merge PRs or force-push. If the current branch is protected, publish
+using a separate backup branch and PR rather than bypassing the rules.
 
-The original public `youtube_music_export.csv` and
-`youtube_music_export.json` files are left untouched. New snapshot directories
-are ignored by Git to avoid accidental large commits. `.env` is also ignored.
+Important: GitHub publication is public once merged or pushed to a public branch.
+The previously exported root-level CSV/JSON are left untouched. The local backup
+directory is outside the repo and must be protected independently.
+`rclone copy --immutable` does not propagate deletions or overwrite existing
+remote objects; unexpected content mismatch causes publication failure.
 
-Create an API key: https://console.cloud.google.com/apis/credentials
+### Recovery and limitations
 
-Monitor API quotas: https://console.cloud.google.com/apis/api/youtube.googleapis.com/quotas
+Choose a historical timestamp, verify both SHA-256 hashes against
+`manifest.json`, and inspect `songs.csv` or `songs.json`. Backups protect
+metadata and playlist membership, **not** audio or guaranteed ability to play
+deleted videos. The `artist` column is the uploader channel, not necessarily
+the artist. A partial YouTube API failure aborts the local snapshot.
+
+**Caution:** SHA-256 detects accidental differences but is not a cryptographic
+proof of authenticity if an attacker can alter both the data and manifest.
+Protect account access and retain versioned independent copies.
+
+Create YouTube API credentials: https://console.cloud.google.com/apis/credentials
+Monitor quota: https://console.cloud.google.com/apis/api/youtube.googleapis.com/quotas

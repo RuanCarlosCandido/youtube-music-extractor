@@ -3,12 +3,11 @@ PYTHON := python3
 VENV := .venv
 PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
-SCRIPT := export_youtube_music.py
 ENV_FILE := .env
 
-.PHONY: help venv install run check test clean clean-all
+.PHONY: help venv install check run publish backup test clean clean-all
 help:
-	@echo "make run, make test, make clean-all"
+	@echo "make run (local) | make publish (Drive + GitHub) | make backup (all) | make test"
 venv:
 	@test -d "$(VENV)" || $(PYTHON) -m venv "$(VENV)"
 install: venv
@@ -17,10 +16,13 @@ check:
 	@test -f "$(ENV_FILE)" || (echo "Create .env with API_KEY" && exit 1)
 	@grep -q '^API_KEY=' "$(ENV_FILE)" || (echo "Missing API_KEY" && exit 1)
 run: install check
-	set -a && source $(ENV_FILE) && set +a && $(PY) $(SCRIPT)
+	set -a && source $(ENV_FILE) && set +a && $(PY) export_youtube_music.py
+publish: install check
+	set -a && source $(ENV_FILE) && set +a && $(PY) publish_backups.py
+backup: run publish
 test: install
 	$(PY) -m unittest discover -s tests -v
 clean:
-	@echo "No snapshots are deleted by make clean"
+	@echo "Snapshots are never deleted automatically"
 clean-all:
 	rm -rf "$(VENV)"
