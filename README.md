@@ -144,3 +144,63 @@ git check-ignore -v data/snapshots/20261015T211801990509Z/songs.json
 
 For the first failed publication, `make publish` retries the latest snapshot.
 Do not run `make backup` again merely to retry the GitHub step.
+
+
+## Deezer library backup (browser automation, all playlists)
+
+This is a **separate** source from the 17 YouTube playlists. Deezer discovers every
+playlist tile available at `https://www.deezer.com/pt/library/playlists` rather
+than requiring a manually maintained list. This includes your playlists **and
+followed/editorial playlists**; the listening-history tile is not a playlist
+and is excluded. It does not export favorite tracks outside playlists.
+
+Prerequisite: Python 3.10+ and Playwright's Chromium browser.
+
+```bash
+make deezer-login    # once: open Chromium, sign in to Deezer, press Enter
+make deezer-run      # discover all library playlists and create local snapshot
+make deezer-publish  # publish latest verified Deezer snapshot (Drive + current Git branch)
+make deezer-backup   # export then publish; no YouTube API key needed
+make test
+```
+
+Deezer's login is held in a **dedicated persistent Chromium profile** at
+`~/.local/share/deezer-playlist-backup/browser` (outside this repository).
+**Never copy or commit that directory, browser cookies, or passwords.**
+When Deezer expires your session, run `make deezer-login` again. Headless
+export is optional via `.venv/bin/python export_deezer.py --headless`;
+headful mode is the default for easier debugging. Captcha/login protections
+must be resolved interactively.
+
+Deezer local snapshots are stored in
+`~/backups/youtube-music-extractor/deezer/<timestamp>/`, optionally overridden
+with `DEEZER_SNAPSHOT_DIR`. The publisher keeps providers separate:
+
+- Local: `~/backups/youtube-music-extractor/deezer/<timestamp>/`
+- Drive: `gdrive:youtube-music-extractor/deezer/snapshots/<timestamp>/`
+- GitHub (current branch): `data/deezer/snapshots/<timestamp>/`
+
+Every Deezer snapshot contains `songs.json`, `songs.csv` and SHA-256
+`manifest.json`. It preserves playlist ID, playlist title, position,
+displayed track title, artist, album, and a track URL when exposed in the DOM.
+Diff counts use title/artist/album/playlist because stable Deezer track IDs are
+**not guaranteed by this interface**. This preserves metadata, not audio.
+
+**Completeness is fail-closed:** the exporter checks each playlist's displayed
+track count against rows extracted, requires contiguous ARIA indices, and will
+not create a successful snapshot after a partial extraction. A change to the
+Deezer web DOM, transient loading problems, a playlist changed during the run,
+or a login expiry may therefore require manually inspecting and rerunning.
+The initial playlist catalog itself is only as complete as the tiles presented
+to the authenticated browser and cannot be independently certified without an
+official inventory API.
+
+**Do not run YouTube `make publish` to publish Deezer snapshots.**
+Use `make deezer-publish`. Drive OAuth is still best-effort due to the
+previously documented Testing-mode refresh token expiration. Published
+snapshots on this public GitHub repository reveal playlist titles and listening
+interests; consider repository visibility before using this feature.
+
+This uses the rendered Deezer interface, not an official Deezer API. Selectors
+may need maintenance when the website changes. It intentionally makes no
+attempt to bypass authentication, CAPTCHA, rate limits or access controls.
