@@ -5,9 +5,9 @@ PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 ENV_FILE := .env
 
-.PHONY: help venv install check run publish backup retry-drive test clean clean-all
+.PHONY: help venv install install-deezer deezer-login deezer-run deezer-publish deezer-backup check run publish backup retry-drive test clean clean-all
 help:
-	@echo "make run (local) | make publish (Drive + GitHub) | make backup (all) | make test"
+	@echo "make backup (YouTube) | make deezer-login | make deezer-backup | make test"
 venv:
 	@test -d "$(VENV)" || $(PYTHON) -m venv "$(VENV)"
 install: venv
