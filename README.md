@@ -204,3 +204,40 @@ interests; consider repository visibility before using this feature.
 This uses the rendered Deezer interface, not an official Deezer API. Selectors
 may need maintenance when the website changes. It intentionally makes no
 attempt to bypass authentication, CAPTCHA, rate limits or access controls.
+
+
+### Chrome via CDP (alternative to Playwright's Chromium)
+
+Google may block sign-in within Playwright-launched Chromium. The exporter
+also supports attaching to a **running Chrome with a local debugging port**:
+
+```bash
+# In a separate terminal, launch Chrome with an isolated automation profile.
+# Keep the debugging port bound to loopback ONLY.
+mkdir -p ~/.local/share/deezer-playlist-backup/chrome-cdp
+google-chrome --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 \
+  --user-data-dir="$HOME/.local/share/deezer-playlist-backup/chrome-cdp" \
+  'https://www.deezer.com/pt/library/playlists'
+
+# Sign into Deezer in this Chrome window, then from the project:
+make deezer-cdp
+make deezer-publish   # only after the local snapshot validates
+```
+
+**Important:** Chrome 136+ **does not honor remote debugging against the
+normal/default Chrome user-data directory**. This means CDP cannot simply
+attach to an already running, normally launched Chrome and reuse that default
+profile's login. The isolated CDP Chrome profile requires a Deezer sign-in
+at least once. If Google blocks sign-in again, do not bypass Google's account
+security: use an approved Deezer sign-in method or a browser extension running
+in your already authenticated browser instead.
+
+The CDP endpoint grants powerful control of the browser, including session
+access. Never expose port 9222 to the network or share this profile. When the
+extraction finishes, close the separate debugging-enabled Chrome window to
+end CDP exposure. The extractor closes only its own tab, not the Chrome
+process.
+
+References:
+- https://developer.chrome.com/blog/remote-debugging-port/
+- https://playwright.dev/python/docs/api/class-browsertype#browser-type-connect-over-cdp
