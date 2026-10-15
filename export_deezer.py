@@ -57,55 +57,79 @@ def scroller_info(page, selector):
     }""")
 
 
-def collect_scrolling(page, selector, extractor, *, max_rounds=3000):
-    """Scroll the nearest scrollable ancestor, revisiting until bottom is stable."""
-    # Uses DOM rather than wheel to support virtualized lists inside nested panels.
-    script = """({selector, action, offset}) => {
+def collect_scrolling(page, selector, extractor, *, expected=None, max_rounds=3000):
+    """Scan virtualized rows slowly; retry missing rows using full reverse passes.
+
+    A viewport's DOM may be temporarily empty while Deezer re-renders it.
+    Never overwrite a complete row with a loading placeholder.
+    """
+    script = """({selector, action, step}) => {
       const first = document.querySelector(selector);
       if (!first) return {missing: true};
       let scroller = first.parentElement;
       while (scroller) {
-        const s = getComputedStyle(scroller);
-        if (/(auto|scroll)/.test(s.overflowY) && scroller.scrollHeight > scroller.clientHeight + 20) break;
+        const style = getComputedStyle(scroller);
+        if (/(auto|scroll)/.test(style.overflowY) &&
+            scroller.scrollHeight > scroller.clientHeight + 20) break;
         scroller = scroller.parentElement;
       }
-      const root = document.scrollingElement;
-      scroller = scroller || root;
+      scroller = scroller || document.scrollingElement;
       const maximum = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
       if (action === 'top') scroller.scrollTop = 0;
-      if (action === 'advance') scroller.scrollTop = Math.min(maximum, scroller.scrollTop + Math.max(120, Math.min(320, scroller.clientHeight / 3)));
-      const atBottom = scroller.scrollTop >= maximum - 3;
-      return {missing: false, position: scroller.scrollTop, maximum, atBottom};
+      if (action === 'bottom') scroller.scrollTop = maximum;
+      if (action === 'forward') scroller.scrollTop = Math.min(maximum, scroller.scrollTop + step);
+      if (action === 'backward') scroller.scrollTop = Math.max(0, scroller.scrollTop - step);
+      return {missing: false, position: scroller.scrollTop,
+              maximum, height: scroller.clientHeight};
     }"""
-    page.evaluate(script, {"selector": selector, "action": "top", "offset": 0})
-    time.sleep(0.4)
-    collected = {}
-    bottom_stable = 0
-    last_signature = None
-    for _ in range(max_rounds):
-        visible = page.eval_on_selector_all(selector, extractor)
-        for item in visible:
-            key = item.get("key")
-            if key is not None:
-                collected[key] = item
-        status = page.evaluate(script, {"selector": selector, "action": "advance", "offset": 0})
+
+    def move(action, step=0):
+        status = page.evaluate(script, {"selector": selector, "action": action, "step": step})
         if status["missing"]:
             raise ValueError("Scrollable content disappeared")
-        signature = (len(collected), round(status["maximum"]), round(status["position"]))
-        if status["atBottom"] and signature == last_signature:
-            bottom_stable += 1
+        return status
+
+    collected = {}
+
+    def collect():
+        for item in page.eval_on_selector_all(selector, extractor):
+            key = item.get("key")
+            if key is None:
+                continue
+            if selector == ROW and (not item.get("music_title") or not item.get("artist")):
+                continue
+            collected[key] = item
+
+    # Multiple passes address transient gaps in a virtualized Deezer list.
+    # The reverse pass catches cells that were not yet populated while scrolling down.
+    for attempt in range(3 if expected is not None else 1):
+        direction = "forward" if attempt % 2 == 0 else "backward"
+        status = move("top" if direction == "forward" else "bottom")
+        time.sleep(0.6)
+        collect()
+        step = max(65, min(160 if attempt else 220, status["height"] / (5 if attempt else 4)))
+        stable_edge = 0
+        for _ in range(max_rounds):
+            before = status["position"]
+            status = move(direction, step)
+            time.sleep(0.25 if attempt else 0.20)
+            collect()
+            if expected is not None and len(collected) >= expected:
+                return collected
+            at_edge = (status["position"] >= status["maximum"] - 2
+                       if direction == "forward" else status["position"] <= 2)
+            if at_edge and abs(status["position"] - before) < 2:
+                stable_edge += 1
+            else:
+                stable_edge = 0
+            if stable_edge >= 9:
+                break
         else:
-            bottom_stable = 0
-        if bottom_stable >= 7:
+            raise ValueError("Scrolling exceeded safety limit")
+        if expected is None or len(collected) >= expected:
             break
-        last_signature = signature
-        time.sleep(0.16)
-    else:
-        raise ValueError("Scrolling exceeded safety limit")
-    # Revisit end after lazy-loading stabilizes.
-    for item in page.eval_on_selector_all(selector, extractor):
-        if item.get("key") is not None:
-            collected[item["key"]] = item
+        print(f"Retrying missing Deezer rows: collected {len(collected)}/{expected} (pass {attempt + 1}/3)")
+    collect()
     return collected
 
 
@@ -160,7 +184,7 @@ def extract_playlist(page, playlist):
             raise ValueError(f"Playlist {playlist['id']} gained tracks during extraction")
         return []
     page.locator(ROW).first.wait_for(timeout=30000)
-    indexed = collect_scrolling(page, ROW, ROW_EXTRACTOR)
+    indexed = collect_scrolling(page, ROW, ROW_EXTRACTOR, expected=expected)
     # Do not count header rows, loading placeholders, or blank items as songs.
     indexed = {i: value for i, value in indexed.items()
                if value["music_title"] and value["artist"]}
