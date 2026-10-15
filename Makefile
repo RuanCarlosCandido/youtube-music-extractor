@@ -5,7 +5,7 @@ PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 ENV_FILE := .env
 
-.PHONY: help venv install check run publish backup test clean clean-all
+.PHONY: help venv install check run publish backup retry-drive test clean clean-all
 help:
 	@echo "make run (local) | make publish (Drive + GitHub) | make backup (all) | make test"
 venv:
@@ -20,6 +20,8 @@ run: install check
 publish: install check
 	set -a && source $(ENV_FILE) && set +a && $(PY) publish_backups.py
 backup: run publish
+retry-drive: install
+	set -a && test -f "$(ENV_FILE)" && source $(ENV_FILE) && set +a && $(PY) publish_backups.py --drive-only
 test: install
 	$(PY) -m unittest discover -s tests -v
 clean:

@@ -33,6 +33,35 @@ class BackupPublicationTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 pub.latest_snapshot(root)
 
+    def test_drive_failure_is_optional_and_github_still_runs(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            app.save_snapshot(root, [], [])
+            with patch.object(pub, "LOCAL_ROOT", root), patch.object(
+                pub, "LOG_DIR", root / "logs"
+            ), patch.dict("os.environ", {"RCLONE_DEST": "gdrive:backup"}), patch.object(
+                pub, "publish_drive", side_effect=__import__("subprocess").CalledProcessError(1, ["rclone"])
+            ), patch.object(pub, "publish_github") as github:
+                self.assertEqual(pub.main([]), 0)
+                github.assert_called_once()
+                logs = list((root / "logs").glob("*.log"))
+                self.assertEqual(len(logs), 1)
+                self.assertIn("Drive FAILED", logs[0].read_text())
+                self.assertIn("github=SUCCESS", logs[0].read_text())
+
+    def test_drive_only_retry_skips_github(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            app.save_snapshot(root, [], [])
+            with patch.object(pub, "LOCAL_ROOT", root), patch.object(
+                pub, "LOG_DIR", root / "logs"
+            ), patch.dict("os.environ", {"RCLONE_DEST": "gdrive:backup"}), patch.object(
+                pub, "publish_drive"
+            ) as drive, patch.object(pub, "publish_github") as github:
+                self.assertEqual(pub.main(["--drive-only"]), 0)
+                drive.assert_called_once()
+                github.assert_not_called()
+
     def test_rclone_uses_immutable_copy(self):
         with tempfile.TemporaryDirectory() as d:
             snapshot = Path(d) / "20261015"

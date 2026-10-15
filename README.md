@@ -50,7 +50,7 @@ Official reference: https://rclone.org/drive/#making-your-own-client-id
 make test      # Run unit tests
 make run       # Fetch YouTube metadata and write a validated local snapshot
 make publish   # Copy latest valid snapshot to Google Drive and commit/push it to GitHub
-make backup    # Both steps
+make backup    # Both steps\nmake retry-drive  # Retry uploading the latest existing snapshot to Drive ONLY
 ```
 
 The GitHub publisher commits **only** its `data/snapshots/<timestamp>/` directory to the currently checked-out branch. It does not merge into `main` or force push. For a protected `main`, use a dedicated backup branch and review PRs. The snapshots published to any public GitHub branch are publicly accessible.
