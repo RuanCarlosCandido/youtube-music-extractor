@@ -127,3 +127,20 @@ affecting backups.
 Google references:
 - https://support.google.com/cloud/answer/15549049
 - https://developers.google.com/identity/protocols/oauth2/policies
+
+### GitHub publication and ignored directories
+
+If the local or global Git ignore rules exclude `data/snapshots/`, the publisher
+stages **only the three already validated snapshot files** with a targeted
+`git add -f`. It never force-adds the whole directory or unrelated secrets.
+If a previous run copied the files locally but failed before staging, rerun
+`make publish`: identical existing files are reused and pushed without another
+YouTube metadata request. A mismatch instead raises an error and preserves
+both copies for investigation. Check ignore sources with:
+
+```bash
+git check-ignore -v data/snapshots/20261015T211801990509Z/songs.json
+```
+
+For the first failed publication, `make publish` retries the latest snapshot.
+Do not run `make backup` again merely to retry the GitHub step.
