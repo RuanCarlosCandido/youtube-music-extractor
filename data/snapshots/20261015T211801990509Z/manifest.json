@@ -1,0 +1,100 @@
+{
+  "status": "complete",
+  "created_at_utc": "2026-10-15T21:18:01.990705+00:00",
+  "playlists": [
+    {
+      "id": "PLrKAOHX96yPPuikYoTMhaMvxN4rhc3gwS",
+      "title": "Basicsss",
+      "expected_count": 185
+    },
+    {
+      "id": "PLrKAOHX96yPMs9CV5MtdaIctW4rrryZId",
+      "title": "Others",
+      "expected_count": 9
+    },
+    {
+      "id": "PLrKAOHX96yPO5h6MduVZCzGryzHfhVVBC",
+      "title": "Pagode/Samba",
+      "expected_count": 48
+    },
+    {
+      "id": "PLrKAOHX96yPPjfPhD8tNAPoBRsM3Yqrcv",
+      "title": "Pop",
+      "expected_count": 253
+    },
+    {
+      "id": "PLrKAOHX96yPO5j3cLg4PrvXzNqNqAtai8",
+      "title": "Alternative2???",
+      "expected_count": 16
+    },
+    {
+      "id": "PLrKAOHX96yPPwtj2qqdWyyrvMAgxyLI9Y",
+      "title": "Eletro",
+      "expected_count": 92
+    },
+    {
+      "id": "PLrKAOHX96yPMn-cCek5tayXwL5WfRjPT6",
+      "title": "Rap/Hip-Hop",
+      "expected_count": 5
+    },
+    {
+      "id": "PLrKAOHX96yPMYvF78GKpD38xgjYa6jq_A",
+      "title": "Forró/MPB",
+      "expected_count": 29
+    },
+    {
+      "id": "PLrKAOHX96yPOmNeH6DB6LkiAG7x9Lx-X0",
+      "title": "Metal",
+      "expected_count": 243
+    },
+    {
+      "id": "PLrKAOHX96yPOVVDQ0pzi-xBe_-8Qtl2GK",
+      "title": "Alternative",
+      "expected_count": 64
+    },
+    {
+      "id": "PLrKAOHX96yPMYuuDvOnZcuIuEnrn_DGZG",
+      "title": "Árabe",
+      "expected_count": 2
+    },
+    {
+      "id": "PLrKAOHX96yPOIOcJl24o8kC04U7RBgk0t",
+      "title": "Arab",
+      "expected_count": 3
+    },
+    {
+      "id": "PLrKAOHX96yPP6MIKDoc6lk_kX58Mcg-KH",
+      "title": "Samba",
+      "expected_count": 3
+    },
+    {
+      "id": "PLrKAOHX96yPOEDGBk3bV4ZtVosFD-sQZw",
+      "title": "pop rock",
+      "expected_count": 178
+    },
+    {
+      "id": "PLrKAOHX96yPPPR-kmFaoXOEuGvsvnokKS",
+      "title": "Gospel",
+      "expected_count": 8
+    },
+    {
+      "id": "PLrKAOHX96yPM-T2uWxFYKjWPV3TUbE2UX",
+      "title": "Zzz",
+      "expected_count": 11
+    },
+    {
+      "id": "PLrKAOHX96yPPH6nXcU9dT7Bklt6ZqtCsX",
+      "title": "Religious",
+      "expected_count": 2
+    }
+  ],
+  "playlist_count": 17,
+  "item_count": 1151,
+  "unavailable_count": 23,
+  "previous_snapshot": null,
+  "changes": null,
+  "sha256": {
+    "songs.json": "6d0c43c140ab3e194a16b17df6efd2b05dbc2887bf3a875744b71fdae9067d2b",
+    "songs.csv": "97d85847d58668d4e4e7feffdb144b1b351f71f8dbcf9f8e5ddffc60e3a62716"
+  }
+}
