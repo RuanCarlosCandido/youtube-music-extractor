@@ -1,5 +1,6 @@
 import hashlib
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -61,6 +62,36 @@ class BackupPublicationTests(unittest.TestCase):
                 self.assertEqual(pub.main(["--drive-only"]), 0)
                 drive.assert_called_once()
                 github.assert_not_called()
+
+    def test_git_backup_ignored_directory_and_retry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repository = root / "repository"
+            bare = root / "remote.git"
+            repository.mkdir()
+            subprocess.run(["git", "init", "--bare", str(bare)], check=True, capture_output=True)
+            subprocess.run(["git", "init", str(repository)], check=True, capture_output=True)
+            for name, value in (("user.name", "Tests"), ("user.email", "test@example.invalid")):
+                subprocess.run(["git", "-C", str(repository), "config", name, value], check=True)
+            (repository / ".gitignore").write_text("data/\n")
+            subprocess.run(["git", "-C", str(repository), "add", ".gitignore"], check=True)
+            subprocess.run(["git", "-C", str(repository), "commit", "-m", "init"], check=True, capture_output=True)
+            subprocess.run(["git", "-C", str(repository), "remote", "add", "origin", str(bare)], check=True)
+            snapshot = app.save_snapshot(root / "local", [], [])
+            original = subprocess.check_output
+
+            def resolve_repo(command, *args, **kwargs):
+                if command == ["git", "rev-parse", "--show-toplevel"]:
+                    return str(repository) + "\n"
+                return original(command, *args, **kwargs)
+
+            with patch.object(pub.subprocess, "check_output", side_effect=resolve_repo):
+                pub.publish_github(snapshot)
+                pub.publish_github(snapshot)
+            files = subprocess.check_output(["git", "--git-dir", str(bare),
+                "ls-tree", "-r", "--name-only", "HEAD"], text=True)
+            self.assertIn("data/snapshots/", files)
+            self.assertIn("songs.json", files)
 
     def test_rclone_uses_immutable_copy(self):
         with tempfile.TemporaryDirectory() as d:
