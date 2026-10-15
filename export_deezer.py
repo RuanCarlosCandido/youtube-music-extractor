@@ -222,7 +222,7 @@ def main():
         parser.error("--login and --cdp cannot be combined; authenticate in Chrome before connecting")
     with sync_playwright() as pw:
         if args.cdp:
-            if not re.fullmatch(r"http://(?:127\\.0\\.0\\.1|localhost):\\d+", args.cdp):
+            if not re.fullmatch(r"http://(?:127\.0\.0\.1|localhost):\d+", args.cdp):
                 parser.error("--cdp must be a local endpoint such as http://127.0.0.1:9222")
             browser = pw.chromium.connect_over_cdp(args.cdp, timeout=10000)
             if not browser.contexts:
