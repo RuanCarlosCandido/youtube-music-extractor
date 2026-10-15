@@ -134,13 +134,15 @@ def main(argv=None):
     parser.add_argument("--snapshot", type=Path,
                         help="Specific local timestamp directory; defaults to newest")
     parser.add_argument("--provider", choices=("youtube", "deezer"), default="youtube",
-                        help="Source of snapshot and destination namespace")\n    args = parser.parse_args(argv)
+                        help="Source of snapshot and destination namespace")
+    args = parser.parse_args(argv)
     logger, logfile = setup_logger()
     logger.info("Publication started; drive_only=%s", args.drive_only)
     print(f"Publication log: {logfile}")
     try:
         root = LOCAL_ROOT if args.provider == "youtube" else Path(os.getenv(
-            "DEEZER_SNAPSHOT_DIR", str(Path.home() / "backups/youtube-music-extractor/deezer")))\n        snapshot = validate_snapshot(args.snapshot) if args.snapshot else latest_snapshot(root)
+            "DEEZER_SNAPSHOT_DIR", str(Path.home() / "backups/youtube-music-extractor/deezer")))
+        snapshot = validate_snapshot(args.snapshot) if args.snapshot else latest_snapshot(root)
     except (OSError, ValueError, KeyError, json.JSONDecodeError) as error:
         logger.error("Local snapshot validation failed: %s", safe_error(error))
         print("Local snapshot validation failed; see log.", file=sys.stderr)
