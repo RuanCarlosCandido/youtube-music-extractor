@@ -90,17 +90,27 @@ def publish_github(snapshot):
     repo = Path(top).resolve()
     target = repo / GITHUB_DATA_ROOT / snapshot.name
     if target.exists():
-        # Never silently overwrite already-published backups.
-        for name in ("songs.json", "songs.csv", "manifest.json"):
-            if not (target / name).exists() or (target / name).read_bytes() != (snapshot / name).read_bytes():
+        # Recover from a previous failed git add/commit attempt.
+        if not target.is_dir() or target.is_symlink():
+            raise ValueError(f"Invalid existing backup directory: {target}")
+        actual = {entry.name for entry in target.iterdir()}
+        expected = {"songs.json", "songs.csv", "manifest.json"}
+        if actual != expected:
+            raise ValueError(f"Unexpected files in existing backup: {target}")
+        for name in expected:
+            if (target / name).is_symlink() or (target / name).read_bytes() != (snapshot / name).read_bytes():
                 raise ValueError(f"GitHub snapshot collision: {target}")
-        print(f"GitHub snapshot already staged: {target}")
-        return
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(snapshot, target)
+        print(f"Existing snapshot matches local source: {target}")
+    else:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(snapshot, target)
     validate_snapshot(target)
     relative = str(target.relative_to(repo))
-    subprocess.run(["git", "-C", str(repo), "add", "--", relative], check=True)
+    # Force only the 3 validated snapshot files, never force-add entire directories
+    # or other ignored data. Supports restrictive global gitignore settings.
+    subprocess.run(["git", "-C", str(repo), "add", "-f", "--",
+                    *(f"{relative}/{name}" for name in ("songs.json", "songs.csv", "manifest.json"))],
+                   check=True)
     # Commit exclusively the backup directory, never unrelated changes or .env.
     staged = subprocess.run(["git", "-C", str(repo), "diff", "--cached", "--quiet", "--", relative])
     if staged.returncode not in (0, 1):
