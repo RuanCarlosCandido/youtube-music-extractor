@@ -214,15 +214,29 @@ def main():
     parser = argparse.ArgumentParser(description="Back up all Deezer library playlists")
     parser.add_argument("--login", action="store_true", help="Open persistent browser for interactive login")
     parser.add_argument("--headless", action="store_true", help="Run without browser window after login")
+    parser.add_argument("--cdp", default=None, metavar="URL",
+                        help="Connect to an already running Chrome debugging endpoint (e.g. http://127.0.0.1:9222)")
     args = parser.parse_args()
     from playwright.sync_api import sync_playwright
-    PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+    if args.login and args.cdp:
+        parser.error("--login and --cdp cannot be combined; authenticate in Chrome before connecting")
     with sync_playwright() as pw:
-        context = pw.chromium.launch_persistent_context(
-            str(PROFILE_DIR), headless=args.headless and not args.login,
-            viewport={"width": 1440, "height": 900})
-        try:
+        if args.cdp:
+            if not re.fullmatch(r"http://(?:127\\.0\\.0\\.1|localhost):\\d+", args.cdp):
+                parser.error("--cdp must be a local endpoint such as http://127.0.0.1:9222")
+            browser = pw.chromium.connect_over_cdp(args.cdp, timeout=10000)
+            if not browser.contexts:
+                raise RuntimeError("No Chrome context is available over CDP")
+            context = browser.contexts[0]
+            # Run in our own tab. Never close the user's Chrome process.
+            page = context.new_page()
+        else:
+            PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+            context = pw.chromium.launch_persistent_context(
+                str(PROFILE_DIR), headless=args.headless and not args.login,
+                viewport={"width": 1440, "height": 900})
             page = context.pages[0] if context.pages else context.new_page()
+        try:
             if args.login:
                 page.goto(LIBRARY_URL)
                 input("Log in to Deezer in the browser, then press Enter here...")
@@ -237,7 +251,11 @@ def main():
             target = save_snapshot(rows, playlists, ROOT)
             print(f"Deezer backup completed: {target} ({len(playlists)} playlists, {len(rows)} tracks)")
         finally:
-            context.close()
+            if args.cdp:
+                page.close()
+                browser.close()  # Detach Playwright; leave externally launched Chrome running.
+            else:
+                context.close()
     return 0
 
 
