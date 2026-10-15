@@ -5,7 +5,7 @@ PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 ENV_FILE := .env
 
-.PHONY: help venv install install-deezer deezer-login deezer-run deezer-publish deezer-backup check run publish backup retry-drive test clean clean-all
+.PHONY: help venv install install-deezer deezer-login deezer-run deezer-cdp deezer-publish deezer-backup check run publish backup retry-drive test clean clean-all
 help:
 	@echo "make backup (YouTube) | make deezer-login | make deezer-backup | make test"
 install-deezer: venv
@@ -15,6 +15,8 @@ deezer-login: install-deezer
 	$(PY) export_deezer.py --login
 deezer-run: install-deezer
 	$(PY) export_deezer.py
+deezer-cdp: install-deezer
+	$(PY) export_deezer.py --cdp http://127.0.0.1:9222
 deezer-publish: venv
 	set -a; if test -f "$(ENV_FILE)"; then source "$(ENV_FILE)"; fi; set +a; $(PY) publish_backups.py --provider deezer
 deezer-backup: deezer-run deezer-publish
