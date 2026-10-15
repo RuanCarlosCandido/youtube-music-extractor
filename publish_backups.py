@@ -74,7 +74,7 @@ def latest_snapshot(root):
     return validate_snapshot(snapshots[0].parent)
 
 
-def publish_drive(snapshot, remote):
+def publish_drive(snapshot, remote if args.provider == "youtube" else remote.rstrip("/") + "/deezer"):
     if not remote or ":" not in remote:
         raise ValueError("RCLONE_DEST must be in remote:path format")
     destination = remote.rstrip("/") + "/snapshots/" + snapshot.name
@@ -84,11 +84,11 @@ def publish_drive(snapshot, remote):
     print(f"Google Drive backup copied to {destination}")
 
 
-def publish_github(snapshot):
+def publish_github(snapshot, provider="youtube"):
     # Operate only from the checked-out repository; no tokens stored by this script.
     top = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip()
     repo = Path(top).resolve()
-    target = repo / GITHUB_DATA_ROOT / snapshot.name
+    target = repo / (GITHUB_DATA_ROOT if provider == "youtube" else Path("data/deezer/snapshots")) / snapshot.name
     if target.exists():
         # Recover from a previous failed git add/commit attempt.
         if not target.is_dir() or target.is_symlink():
@@ -117,7 +117,7 @@ def publish_github(snapshot):
         raise RuntimeError("Unable to inspect staged backup")
     if staged.returncode == 1:
         subprocess.run(["git", "-C", str(repo), "commit", "--only", "-m",
-                        f"backup: YouTube playlists {snapshot.name}", "--", relative], check=True)
+                        f"backup: {provider} playlists {snapshot.name}", "--", relative], check=True)
     current_branch = subprocess.check_output(
         ["git", "-C", str(repo), "branch", "--show-current"], text=True).strip()
     if not current_branch:
@@ -133,12 +133,12 @@ def main(argv=None):
                         help="Retry only Google Drive, without creating a snapshot or pushing GitHub")
     parser.add_argument("--snapshot", type=Path,
                         help="Specific local timestamp directory; defaults to newest")
-    args = parser.parse_args(argv)
+    parser.add_argument("--provider", choices=("youtube", "deezer"), default="youtube",\n                        help="Source of snapshot and destination namespace")\n    args = parser.parse_args(argv)
     logger, logfile = setup_logger()
     logger.info("Publication started; drive_only=%s", args.drive_only)
     print(f"Publication log: {logfile}")
     try:
-        snapshot = validate_snapshot(args.snapshot) if args.snapshot else latest_snapshot(LOCAL_ROOT)
+        root = LOCAL_ROOT if args.provider == "youtube" else Path(os.getenv(\n            "DEEZER_SNAPSHOT_DIR", str(Path.home() / "backups/youtube-music-extractor/deezer")))\n        snapshot = validate_snapshot(args.snapshot) if args.snapshot else latest_snapshot(root)
     except (OSError, ValueError, KeyError, json.JSONDecodeError) as error:
         logger.error("Local snapshot validation failed: %s", safe_error(error))
         print("Local snapshot validation failed; see log.", file=sys.stderr)
@@ -162,7 +162,7 @@ def main(argv=None):
 
     if not args.drive_only:
         try:
-            publish_github(snapshot)
+            publish_github(snapshot, provider=args.provider)
             github_status = "SUCCESS"
             logger.info("GitHub SUCCESS: snapshot %s", snapshot.name)
         except (OSError, subprocess.CalledProcessError, ValueError, RuntimeError) as error:
