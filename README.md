@@ -78,47 +78,52 @@ References:
 
 Each snapshot retains known IDs, titles, membership and positions and records unavailable entries when exposed by YouTube. A music video removed before it was ever exported may be unrecoverable. `artist` is the channel/uploader field, not a canonical artist. Compare SHA-256 values with `manifest.json` when recovering, remembering that someone with write access to both data and hashes can alter both.
 
-## Optional free GitHub Pages for Google OAuth production branding
+## Confirmed limitation: no custom domain for OAuth publication (2026-10-15)
 
-**Status: prepared but NOT verified with Google.** The site is published only after
-the repository owner enables GitHub Pages and merges the docs into the configured
-publishing branch. Creating these files does not automatically enable Pages or
-approve Google's OAuth app. No domain purchase is required to *try* this route.
+**Test result: the free GitHub Pages branding approach failed.**
+The public pages loaded, but Google Cloud OAuth Branding rejected the domain.
+Its UI reported:
 
-Site content: `docs/index.md` and `docs/privacy.md`. Once Pages is active
-with **Deploy from a branch → main → /docs**, the expected URLs are:
+```text
+Missing domain: ruancarloscandido.github.io
+Authorized domain: github.io
+Invalid domain: must be a top private domain
+```
 
-- Home page: `https://ruancarloscandido.github.io/youtube-music-extractor/`
-- Privacy policy: `https://ruancarloscandido.github.io/youtube-music-extractor/privacy.html`
+A `*.github.io` project page is hosted on a shared domain, not a top
+private domain controlled by this project's owner. Google requires a domain
+you own or are authorized to use for OAuth app branding/verification.
+**Do not claim ownership of `github.io`, invent domain records, or buy a
+domain just to run this personal backup.** The two pages in `docs/` are
+informational only; they do not unblock Google OAuth production status.
 
-Open both URLs in a private browser window and ensure they display the intended
-content **before** entering them in Google Cloud → Google Auth Platform → Branding.
-For Authorized domains, Google may require `github.io` and ownership verification
-you cannot complete on a shared domain. **Do not claim ownership of github.io
-or invent a domain**; if Google rejects this setup, stop rather than bypassing
-the checks. See [Google's domain verification policy](https://support.google.com/cloud/answer/15549049).
+### Consequences
 
-If accepted, complete Branding, change Audience from *Testing* to
-*In production*, then reauthorize your local rclone remote:
-`rclone config reconnect gdrive:`. Retest using `rclone lsd gdrive:`.
-Personal use does not necessarily require full public OAuth verification,
-but Google can still enforce branding/security rules or block publication.
+The user's custom Google OAuth Desktop app remains **External / Testing**
+with `drive.file`. For such apps, refresh tokens normally expire after
+**seven days**, requiring an interactive reauthorization:
 
-### If free GitHub Pages cannot satisfy Google
+```bash
+rclone config reconnect gdrive:
+rclone lsd gdrive:
+```
 
-Keep the client in **Testing** and add your own Google account as a test user.
-For the `drive.file` scope, Google OAuth refresh tokens for External/Testing
-apps generally expire in **7 days**. This is unsuitable for unattended long-term
-Drive backups: reauthorize periodically with
-`rclone config reconnect gdrive:` and check `rclone lsd gdrive:`.
-A successful backup today is **not** evidence that next week's upload will work.
+Token expiration can interrupt unattended backups. A successful Drive upload
+today is not evidence that future scheduled uploads will continue working.
+Use local backups and GitHub history as the durable baseline, and treat
+Google Drive as **optional, best-effort** until a sustainable OAuth setup
+is available. This repo does not include OAuth tokens or client secrets.
 
-With no personal domain and no desire to maintain weekly OAuth renewals,
-use the **local + GitHub** backups as the primary durable solution; Drive is
-optional and should be treated as best-effort until OAuth production status
-is confirmed. The `make publish` command currently reports failure if Drive
-is not configured or fails, even if the GitHub copy succeeds. Historical local
-snapshots are retained.
+The `make publish` command currently attempts both Drive and GitHub.
+If Drive fails, it prints a failure and exits nonzero **even if** GitHub
+publishing succeeds. A local snapshot is retained in all cases.
+Do not interpret a nonzero publication result as proof all three copies failed.
 
-**Privacy note:** GitHub Pages text is public, but neither the site nor this
-repository should contain OAuth client secrets, rclone tokens, or YouTube API keys.
+For this user, **a domain purchase is explicitly out of scope**. Avoid
+suggesting the GitHub Pages authorization technique as a working remedy.
+The public `docs/` pages may be retained or removed later without
+affecting backups.
+
+Google references:
+- https://support.google.com/cloud/answer/15549049
+- https://developers.google.com/identity/protocols/oauth2/policies
