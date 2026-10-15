@@ -105,14 +105,14 @@ def collect_scrolling(page, selector, extractor, *, expected=None, max_rounds=30
     for attempt in range(3 if expected is not None else 1):
         direction = "forward" if attempt % 2 == 0 else "backward"
         status = move("top" if direction == "forward" else "bottom")
-        time.sleep(0.6)
+        time.sleep(0.8)  # Let Deezer finish rendering after jumping to an edge.
         collect()
         step = max(65, min(160 if attempt else 220, status["height"] / (5 if attempt else 4)))
         stable_edge = 0
         for _ in range(max_rounds):
             before = status["position"]
             status = move(direction, step)
-            time.sleep(0.25 if attempt else 0.20)
+            time.sleep(0.40 if attempt else 0.35)  # Allow virtualized rows to settle.
             collect()
             if expected is not None and len(collected) >= expected:
                 return collected
@@ -129,6 +129,7 @@ def collect_scrolling(page, selector, extractor, *, expected=None, max_rounds=30
         if expected is None or len(collected) >= expected:
             break
         print(f"Retrying missing Deezer rows: collected {len(collected)}/{expected} (pass {attempt + 1}/3)")
+    time.sleep(0.4)
     collect()
     return collected
 
