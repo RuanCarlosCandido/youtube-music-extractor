@@ -184,30 +184,42 @@ def selected_playlists():
 
 
 def read_playlist_metadata(page, playlist_id):
-    """Read title and declared total from the playlist's own header.
+    """Read the playlist title and declared count without requiring visible h1.
 
-    Never infer expected_count from collected rows: that would mask truncation.
+    Deezer's legacy playlist page uses a hidden #naboo_playlist_title element.
+    Playwright's default visible wait timed out even though that element existed.
     """
-    page.locator("h1").first.wait_for(timeout=30000)
+    page.locator("#naboo_playlist_title, h1").first.wait_for(state="attached", timeout=30000)
     info = page.evaluate("""() => {
-      const heading = document.querySelector('h1');
-      if (!heading) return null;
-      const title = (heading.textContent || '').trim();
-      // Prefer compact header nodes displaying the track count, not table rows.
-      const nodes = [...document.querySelectorAll('main p, main span, main div, header p, header span')];
-      const labels = nodes.filter(el => !el.closest('[role="row"]'))
-        .map(el => (el.textContent || '').trim())
-        .filter(t => t.length < 110 && /\\d/.test(t) && /(?:temas?|faixas?|m[uú]sicas?|tracks?|titres?|songs?)/i.test(t));
-      return {title, labels: [...new Set(labels)].slice(0, 40)};
+      const titleNode = document.querySelector('#naboo_playlist_title') ||
+                        document.querySelector('h1');
+      const title = (titleNode?.textContent || '').trim();
+      const selectors = [
+        '#naboo_playlist_infos', '#naboo_playlist_tracks',
+        '[data-testid="playlist-track-count"]', '[data-testid="track-count"]',
+        'main header', 'main', 'header'
+      ];
+      const texts = [];
+      for (const selector of selectors) {
+        for (const node of document.querySelectorAll(selector)) {
+          // Never obtain a count from the rows themselves.
+          if (node.closest('[role="row"]')) continue;
+          const text = (node.innerText || node.textContent || '').trim();
+          if (text && text.length < 12000) texts.push(text);
+        }
+      }
+      // Deezer sometimes renders its header outside <main>.
+      const body = document.body?.innerText || '';
+      if (body) texts.push(body.slice(0, 2500));
+      return {title, texts};
     }""")
     if not info or not info["title"]:
         raise ValueError(f"Unable to read playlist title for {playlist_id}")
-    counts = [parse_count(label) for label in info["labels"]]
-    counts = [count for count in counts if count is not None]
-    if not counts:
-        raise ValueError(f"Missing declared track count in playlist header: {playlist_id}")
-    # Prefer the first concise header count. Never substitute extracted row count.
-    return info["title"], counts[0]
+    for text in info["texts"]:
+        count = parse_count(text)
+        if count is not None:
+            return info["title"], count
+    raise ValueError(f"Missing declared track count on playlist page: {playlist_id}")
 
 
 def extract_playlist(page, playlist):
