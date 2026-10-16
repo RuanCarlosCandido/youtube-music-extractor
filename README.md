@@ -150,11 +150,11 @@ Do not run `make backup` again merely to retry the GitHub step.
 
 This is a **separate** source from the 17 YouTube playlists. The exporter
 uses the **15 explicitly approved playlist IDs** in `SELECTED_PLAYLIST_IDS`
-inside `export_deezer.py`. It opens the Deezer library only to retrieve the
-titles and expected track counts for these IDs. Followed/editorial or
+inside `export_deezer.py`. It navigates **directly** to each listed playlist URL, reading its title and
+expected track count from that playlist page; the library grid is never opened. Followed/editorial or
 algorithmically suggested playlists are **not** exported, even if visible in
-the library. If any configured playlist is missing or has no usable item
-count, the export fails rather than silently publishing a partial inventory.
+the library. If any configured playlist cannot be opened or its own header has no usable
+track count, the export fails rather than silently publishing a partial inventory.
 New personal playlists must be added to the allowlist manually. Listening
 history and favorite tracks outside playlists are not exported.
 
@@ -195,8 +195,8 @@ track count against rows extracted, requires contiguous ARIA indices, and will
 not create a successful snapshot after a partial extraction. A change to the
 Deezer web DOM, transient loading problems, a playlist changed during the run,
 or a login expiry may therefore require manually inspecting and rerunning.
-The selected playlist catalog is fixed in the code; every configured ID must
-appear in the library's rendered tiles to pass validation.
+The selected playlist catalog is fixed in the code; every configured URL must
+load and expose an authoritative count to pass validation.
 
 **Do not run YouTube `make publish` to publish Deezer snapshots.**
 Use `make deezer-publish`. Drive OAuth is still best-effort due to the
