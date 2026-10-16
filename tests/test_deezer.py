@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from export_deezer import (parse_count, validate_positions, save_snapshot,
+from export_deezer import (parse_count, validate_positions, validate_observed_rows, save_snapshot,
                            selected_playlists, SELECTED_PLAYLIST_IDS)
 from publish_backups import validate_snapshot
 
@@ -15,6 +15,13 @@ class DeezerExtractionTests(unittest.TestCase):
         self.assertTrue(all(p["url"] == f"https://www.deezer.com/pt/playlist/{p['id']}"
                             for p in selected))
         self.assertFalse(any("/library/" in p["url"] for p in selected))
+
+    def test_contiguous_observed_rows_not_claimed_complete(self):
+        rows = {i: {"music_title": f"Track {i}"} for i in range(1, 500)}
+        self.assertEqual(len(validate_observed_rows(rows, "metal")), 499)
+        del rows[125]
+        with self.assertRaisesRegex(ValueError, "Missing Deezer row positions"):
+            validate_observed_rows(rows, "metal")
 
     def test_portuguese_counts(self):
         self.assertEqual(parse_count("509 temas - fã 1"), 509)
@@ -41,7 +48,9 @@ class DeezerExtractionTests(unittest.TestCase):
             rows = [{"playlist_id": "12", "playlist_title": "Metal", "position": 0,
                      "music_title": "Song", "artist": "Artist", "album": "Album", "track_url": ""}]
             snapshot = save_snapshot(rows, playlists, root)
-            self.assertEqual(validate_snapshot(snapshot), snapshot.resolve())
+            with self.assertRaisesRegex(ValueError, "not complete"):
+                validate_snapshot(snapshot)
+            self.assertEqual(__import__("json").loads((snapshot / "manifest.json").read_text())["status"], "unverified")
 
 
 if __name__ == "__main__":
