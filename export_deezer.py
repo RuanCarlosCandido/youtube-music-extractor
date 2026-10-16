@@ -121,7 +121,7 @@ def collect_scrolling(page, selector, extractor, *, expected=None, max_rounds=30
 
     # Multiple passes address transient gaps in a virtualized Deezer list.
     # The reverse pass catches cells that were not yet populated while scrolling down.
-    for attempt in range(3 if expected is not None else 1):
+    for attempt in range(3):
         direction = "forward" if attempt % 2 == 0 else "backward"
         status = move("top" if direction == "forward" else "bottom")
         time.sleep(0.8)  # Let Deezer finish rendering after jumping to an edge.
@@ -145,9 +145,9 @@ def collect_scrolling(page, selector, extractor, *, expected=None, max_rounds=30
                 break
         else:
             raise ValueError("Scrolling exceeded safety limit")
-        if expected is None or len(collected) >= expected:
+        if expected is not None and len(collected) >= expected:
             break
-        print(f"Retrying missing Deezer rows: collected {len(collected)}/{expected} (pass {attempt + 1}/3)")
+        print(f"Deezer scan pass {attempt + 1}/3: {len(collected)} rows collected")
     time.sleep(0.4)
     collect()
     return collected
@@ -184,42 +184,25 @@ def selected_playlists():
 
 
 def read_playlist_metadata(page, playlist_id):
-    """Read the playlist title and declared count without requiring visible h1.
-
-    Deezer's legacy playlist page uses a hidden #naboo_playlist_title element.
-    Playwright's default visible wait timed out even though that element existed.
-    """
-    page.locator("#naboo_playlist_title, h1").first.wait_for(state="attached", timeout=30000)
-    info = page.evaluate("""() => {
-      const titleNode = document.querySelector('#naboo_playlist_title') ||
-                        document.querySelector('h1');
-      const title = (titleNode?.textContent || '').trim();
-      const selectors = [
-        '#naboo_playlist_infos', '#naboo_playlist_tracks',
-        '[data-testid="playlist-track-count"]', '[data-testid="track-count"]',
-        'main header', 'main', 'header'
-      ];
-      const texts = [];
-      for (const selector of selectors) {
-        for (const node of document.querySelectorAll(selector)) {
-          // Never obtain a count from the rows themselves.
-          if (node.closest('[role="row"]')) continue;
-          const text = (node.innerText || node.textContent || '').trim();
-          if (text && text.length < 12000) texts.push(text);
-        }
-      }
-      // Deezer sometimes renders its header outside <main>.
-      const body = document.body?.innerText || '';
-      if (body) texts.push(body.slice(0, 2500));
-      return {title, texts};
+    """Read a title if present; never block on unproven header-count selectors."""
+    page.locator(ROW).first.wait_for(timeout=30000)
+    title = page.evaluate("""() => {
+      const node = document.querySelector('#naboo_playlist_title') ||
+                   document.querySelector('h1');
+      return (node?.textContent || '').trim();
     }""")
-    if not info or not info["title"]:
-        raise ValueError(f"Unable to read playlist title for {playlist_id}")
-    for text in info["texts"]:
-        count = parse_count(text)
-        if count is not None:
-            return info["title"], count
-    raise ValueError(f"Missing declared track count on playlist page: {playlist_id}")
+    return title or f"Playlist {playlist_id}", None
+
+
+def validate_observed_rows(indexed, playlist_id):
+    """Only prove internal continuity, not full playlist completeness."""
+    if not indexed:
+        raise ValueError(f"No song rows captured for playlist {playlist_id}")
+    indices = sorted(indexed)
+    missing = sorted(set(range(indices[0], indices[-1] + 1)) - set(indices))
+    if missing:
+        raise ValueError(f"Missing Deezer row positions in {playlist_id}: {missing[:30]}")
+    return [indexed[i] for i in indices]
 
 
 def extract_playlist(page, playlist):
@@ -227,16 +210,13 @@ def extract_playlist(page, playlist):
     title, expected = read_playlist_metadata(page, playlist["id"])
     playlist["title"] = title
     playlist["expected_count"] = expected
-    if expected == 0:
-        page.locator("body").wait_for()
-        if page.locator(ROW).count():
-            raise ValueError(f"Playlist {playlist['id']} gained tracks during extraction")
-        return []
-    page.locator(ROW).first.wait_for(timeout=30000)
+    playlist["count_verified"] = False
     indexed = collect_scrolling(page, ROW, ROW_EXTRACTOR, expected=expected)
     indexed = {i: value for i, value in indexed.items()
                if value["music_title"] and value["artist"]}
-    ordered = validate_positions(indexed, expected, playlist["id"])
+    ordered = validate_observed_rows(indexed, playlist["id"])
+    playlist["observed_count"] = len(ordered)
+    print(f"WARNING {title}: {len(ordered)} contiguous tracks; total not independently verified")
     return [{"playlist_id": playlist["id"], "playlist_title": playlist["title"],
              "position": position, "music_title": item["music_title"],
              "artist": item["artist"], "album": item["album"],
@@ -266,7 +246,7 @@ def save_snapshot(rows, playlists, root):
             writer = csv.DictWriter(stream, fieldnames=FIELDS)
             writer.writeheader()
             writer.writerows(rows)
-        manifest = {"source": "deezer", "status": "complete",
+        manifest = {"source": "deezer", "status": ("complete" if all(p.get("count_verified") for p in playlists) else "unverified"),
                     "created_at_utc": datetime.now(timezone.utc).isoformat(),
                     "playlists": playlists, "playlist_count": len(playlists),
                     "item_count": len(rows), "previous_snapshot": str(previous_path) if previous_path else None,
@@ -318,10 +298,11 @@ def main():
             for playlist in playlists:
                 extracted = extract_playlist(page, playlist)
                 rows.extend(extracted)
-                print(f"Validated {playlist['title']}: {len(extracted)}/{playlist['expected_count']}")
+                print(f"Collected {playlist['title']}: {len(extracted)} tracks (unverified total)")
             # Do not publish partial results: all discovered playlists validated.
             target = save_snapshot(rows, playlists, ROOT)
-            print(f"Deezer backup completed: {target} ({len(playlists)} playlists, {len(rows)} tracks)")
+            print(f"Deezer local export: {target} ({len(playlists)} playlists, {len(rows)} tracks)")
+            print("WARNING: playlist totals are unverified; publication is intentionally blocked.")
         finally:
             if args.cdp:
                 page.close()
