@@ -44,7 +44,7 @@ SELECTED_PLAYLIST_IDS = (
 
 
 def parse_count(text):
-    match = re.search(r"(\d[\d\s.,\u00a0]*)\s+(?:temas?|faixas?|tracks?|titres?)\b", text, re.I)
+    match = re.search(r"(\d[\d\s.,\u00a0]*)\s+(?:temas?|faixas?|m[uú]sicas?|tracks?|titres?|songs?)\b", text, re.I)
     return int(re.sub(r"\D", "", match.group(1))) if match else None
 
 
@@ -176,44 +176,52 @@ ROW_EXTRACTOR = """nodes => nodes.map(row => {
 })"""
 
 
-def select_playlists(cards, selected_ids=SELECTED_PLAYLIST_IDS):
-    """Select only explicitly approved playlists, preserving configured order."""
-    playlists_by_id = {}
-    for playlist in cards.values():
-        if playlist["id"] not in selected_ids:
-            continue
-        count = parse_count(playlist["count_text"])
-        if not playlist["title"] or count is None:
-            raise ValueError(f"Selected playlist missing title/count: {playlist['id']}")
-        playlists_by_id[playlist["id"]] = {
-            "id": playlist["id"], "title": playlist["title"],
-            "url": playlist["url"], "expected_count": count
-        }
-    missing = [playlist_id for playlist_id in selected_ids if playlist_id not in playlists_by_id]
-    if missing:
-        raise ValueError(f"Selected Deezer playlists not found in library: {', '.join(missing)}")
-    return [playlists_by_id[playlist_id] for playlist_id in selected_ids]
+def selected_playlists():
+    """Use the explicit playlist allowlist without visiting the library grid."""
+    return [{"id": playlist_id,
+             "url": f"https://www.deezer.com/pt/playlist/{playlist_id}"}
+            for playlist_id in SELECTED_PLAYLIST_IDS]
 
 
-def discover(page):
-    page.goto(LIBRARY_URL, wait_until="domcontentloaded", timeout=60000)
-    page.locator(CARD).first.wait_for(timeout=30000)
-    cards = collect_scrolling(page, CARD, CARD_EXTRACTOR)
-    return select_playlists(cards)
+def read_playlist_metadata(page, playlist_id):
+    """Read title and declared total from the playlist's own header.
+
+    Never infer expected_count from collected rows: that would mask truncation.
+    """
+    page.locator("h1").first.wait_for(timeout=30000)
+    info = page.evaluate("""() => {
+      const heading = document.querySelector('h1');
+      if (!heading) return null;
+      const title = (heading.textContent || '').trim();
+      // Prefer compact header nodes displaying the track count, not table rows.
+      const nodes = [...document.querySelectorAll('main p, main span, main div, header p, header span')];
+      const labels = nodes.filter(el => !el.closest('[role="row"]'))
+        .map(el => (el.textContent || '').trim())
+        .filter(t => t.length < 110 && /\\d/.test(t) && /(?:temas?|faixas?|m[uú]sicas?|tracks?|titres?|songs?)/i.test(t));
+      return {title, labels: [...new Set(labels)].slice(0, 40)};
+    }""")
+    if not info or not info["title"]:
+        raise ValueError(f"Unable to read playlist title for {playlist_id}")
+    counts = [parse_count(label) for label in info["labels"]]
+    counts = [count for count in counts if count is not None]
+    if not counts:
+        raise ValueError(f"Missing declared track count in playlist header: {playlist_id}")
+    # Prefer the first concise header count. Never substitute extracted row count.
+    return info["title"], counts[0]
 
 
 def extract_playlist(page, playlist):
     page.goto(playlist["url"], wait_until="domcontentloaded", timeout=60000)
-    expected = playlist["expected_count"]
+    title, expected = read_playlist_metadata(page, playlist["id"])
+    playlist["title"] = title
+    playlist["expected_count"] = expected
     if expected == 0:
-        # No rows expected; nonetheless require the playlist page to be accessible.
         page.locator("body").wait_for()
         if page.locator(ROW).count():
             raise ValueError(f"Playlist {playlist['id']} gained tracks during extraction")
         return []
     page.locator(ROW).first.wait_for(timeout=30000)
     indexed = collect_scrolling(page, ROW, ROW_EXTRACTOR, expected=expected)
-    # Do not count header rows, loading placeholders, or blank items as songs.
     indexed = {i: value for i, value in indexed.items()
                if value["music_title"] and value["artist"]}
     ordered = validate_positions(indexed, expected, playlist["id"])
@@ -293,7 +301,7 @@ def main():
                 page.goto(LIBRARY_URL)
                 input("Log in to Deezer in the browser, then press Enter here...")
                 return 0
-            playlists = discover(page)
+            playlists = selected_playlists()
             rows = []
             for playlist in playlists:
                 extracted = extract_playlist(page, playlist)
