@@ -1,4 +1,4 @@
-"""Export every Deezer library playlist through a persistent Playwright browser.
+"""Export only explicitly selected Deezer playlists through Playwright.
 
 No Deezer API credentials are used. The browser profile stays outside the repo.
 This is DOM automation: a changed UI must fail validation, never silently
@@ -22,6 +22,25 @@ ROOT = Path(os.getenv("DEEZER_SNAPSHOT_DIR", str(Path.home() / "backups/youtube-
 FIELDS = ["playlist_id", "playlist_title", "position", "music_title", "artist", "album", "track_url"]
 CARD = '[data-testid="thumbnail-playlist-li"]'
 ROW = '[role="row"][aria-rowindex]'
+
+SELECTED_PLAYLIST_IDS = (
+    "11994288381",
+    "12336025671",
+    "14051941961",
+    "13059601643",
+    "15470517361",
+    "11994289941",
+    "12183844171",
+    "12185463571",
+    "15550023483",
+    "13580706381",
+    "15101089843",
+    "12100872491",
+    "12189664351",
+    "12221154911",
+    "14168343601",
+)
+
 
 
 def parse_count(text):
@@ -157,22 +176,30 @@ ROW_EXTRACTOR = """nodes => nodes.map(row => {
 })"""
 
 
+def select_playlists(cards, selected_ids=SELECTED_PLAYLIST_IDS):
+    """Select only explicitly approved playlists, preserving configured order."""
+    playlists_by_id = {}
+    for playlist in cards.values():
+        if playlist["id"] not in selected_ids:
+            continue
+        count = parse_count(playlist["count_text"])
+        if not playlist["title"] or count is None:
+            raise ValueError(f"Selected playlist missing title/count: {playlist['id']}")
+        playlists_by_id[playlist["id"]] = {
+            "id": playlist["id"], "title": playlist["title"],
+            "url": playlist["url"], "expected_count": count
+        }
+    missing = [playlist_id for playlist_id in selected_ids if playlist_id not in playlists_by_id]
+    if missing:
+        raise ValueError(f"Selected Deezer playlists not found in library: {', '.join(missing)}")
+    return [playlists_by_id[playlist_id] for playlist_id in selected_ids]
+
+
 def discover(page):
     page.goto(LIBRARY_URL, wait_until="domcontentloaded", timeout=60000)
     page.locator(CARD).first.wait_for(timeout=30000)
     cards = collect_scrolling(page, CARD, CARD_EXTRACTOR)
-    if not cards:
-        raise ValueError("No playlists discovered; login or UI may have changed")
-    playlists = []
-    for p in cards.values():
-        expected = parse_count(p["count_text"])
-        if not p["title"] or expected is None:
-            raise ValueError(f"Missing playlist title/count: {p['id']}")
-        playlists.append({"id": p["id"], "title": p["title"], "url": p["url"],
-                          "expected_count": expected})
-    # History is a different URL and is intentionally not a playlist. Followed
-    # playlists ARE included, regardless of who owns them.
-    return playlists
+    return select_playlists(cards)
 
 
 def extract_playlist(page, playlist):
@@ -236,7 +263,7 @@ def save_snapshot(rows, playlists, root):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Back up all Deezer library playlists")
+    parser = argparse.ArgumentParser(description="Back up 15 explicitly selected Deezer playlists")
     parser.add_argument("--login", action="store_true", help="Open persistent browser for interactive login")
     parser.add_argument("--headless", action="store_true", help="Run without browser window after login")
     parser.add_argument("--cdp", default=None, metavar="URL",
