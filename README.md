@@ -244,3 +244,20 @@ process.
 References:
 - https://developer.chrome.com/blog/remote-debugging-port/
 - https://playwright.dev/python/docs/api/class-browsertype#browser-type-connect-over-cdp
+
+
+### Deezer direct-page count limitation (2026-10-16)
+
+The Deezer playlist page currently exposes its title through a hidden
+`#naboo_playlist_title`, but the attempted header selectors did **not** expose
+a reliable total track count. The previous `h1` visible wait and subsequent
+header-count requirement broke direct-page extraction. Those gates have been
+removed. The extractor now starts scrolling as soon as track rows exist,
+performs three slow passes, and rejects gaps between observed ARIA indices.
+
+**Important:** contiguous observed positions alone do **not** prove that the
+last song was captured. Until an independent count source is implemented,
+these local Deezer snapshots are marked `status: unverified` and the normal
+publisher refuses to push them to Drive or GitHub. Do not treat this as a
+complete, verified backup or manually change the status. The 15 URL allowlist
+remains enforced and the library grid is never visited.
