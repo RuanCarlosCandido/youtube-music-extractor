@@ -146,19 +146,23 @@ For the first failed publication, `make publish` retries the latest snapshot.
 Do not run `make backup` again merely to retry the GitHub step.
 
 
-## Deezer library backup (browser automation, all playlists)
+## Deezer library backup (browser automation, 15 explicitly selected playlists)
 
-This is a **separate** source from the 17 YouTube playlists. Deezer discovers every
-playlist tile available at `https://www.deezer.com/pt/library/playlists` rather
-than requiring a manually maintained list. This includes your playlists **and
-followed/editorial playlists**; the listening-history tile is not a playlist
-and is excluded. It does not export favorite tracks outside playlists.
+This is a **separate** source from the 17 YouTube playlists. The exporter
+uses the **15 explicitly approved playlist IDs** in `SELECTED_PLAYLIST_IDS`
+inside `export_deezer.py`. It opens the Deezer library only to retrieve the
+titles and expected track counts for these IDs. Followed/editorial or
+algorithmically suggested playlists are **not** exported, even if visible in
+the library. If any configured playlist is missing or has no usable item
+count, the export fails rather than silently publishing a partial inventory.
+New personal playlists must be added to the allowlist manually. Listening
+history and favorite tracks outside playlists are not exported.
 
 Prerequisite: Python 3.10+ and Playwright's Chromium browser.
 
 ```bash
 make deezer-login    # once: open Chromium, sign in to Deezer, press Enter
-make deezer-run      # discover all library playlists and create local snapshot
+make deezer-run      # export the 15 selected Deezer playlists to a local snapshot
 make deezer-publish  # publish latest verified Deezer snapshot (Drive + current Git branch)
 make deezer-backup   # export then publish; no YouTube API key needed
 make test
@@ -191,9 +195,8 @@ track count against rows extracted, requires contiguous ARIA indices, and will
 not create a successful snapshot after a partial extraction. A change to the
 Deezer web DOM, transient loading problems, a playlist changed during the run,
 or a login expiry may therefore require manually inspecting and rerunning.
-The initial playlist catalog itself is only as complete as the tiles presented
-to the authenticated browser and cannot be independently certified without an
-official inventory API.
+The selected playlist catalog is fixed in the code; every configured ID must
+appear in the library's rendered tiles to pass validation.
 
 **Do not run YouTube `make publish` to publish Deezer snapshots.**
 Use `make deezer-publish`. Drive OAuth is still best-effort due to the
