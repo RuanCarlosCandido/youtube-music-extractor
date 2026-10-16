@@ -3,32 +3,18 @@ import unittest
 from pathlib import Path
 
 from export_deezer import (parse_count, validate_positions, save_snapshot,
-                           select_playlists, SELECTED_PLAYLIST_IDS)
+                           selected_playlists, SELECTED_PLAYLIST_IDS)
 from publish_backups import validate_snapshot
 
 
 class DeezerExtractionTests(unittest.TestCase):
-    def test_only_configured_playlists_are_selected(self):
-        cards = {
-            playlist_id: {
-                "id": playlist_id, "title": f"Playlist {playlist_id}",
-                "url": f"https://www.deezer.com/pt/playlist/{playlist_id}",
-                "count_text": "2 temas"
-            }
-            for playlist_id in SELECTED_PLAYLIST_IDS
-        }
-        cards["777756285"] = {
-            "id": "777756285", "title": "Flamenco Hits",
-            "url": "https://www.deezer.com/pt/playlist/777756285",
-            "count_text": "51 temas"
-        }
-        selected = select_playlists(cards)
+    def test_only_explicit_urls_and_no_library_page(self):
+        selected = selected_playlists()
         self.assertEqual([p["id"] for p in selected], list(SELECTED_PLAYLIST_IDS))
         self.assertEqual(len(selected), 15)
-
-    def test_missing_selected_playlist_aborts(self):
-        with self.assertRaisesRegex(ValueError, "not found"):
-            select_playlists({}, SELECTED_PLAYLIST_IDS)
+        self.assertTrue(all(p["url"] == f"https://www.deezer.com/pt/playlist/{p['id']}"
+                            for p in selected))
+        self.assertFalse(any("/library/" in p["url"] for p in selected))
 
     def test_portuguese_counts(self):
         self.assertEqual(parse_count("509 temas - fã 1"), 509)
