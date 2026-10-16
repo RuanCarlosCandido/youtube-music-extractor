@@ -144,3 +144,120 @@ git check-ignore -v data/snapshots/20261015T211801990509Z/songs.json
 
 For the first failed publication, `make publish` retries the latest snapshot.
 Do not run `make backup` again merely to retry the GitHub step.
+
+
+## Deezer library backup (browser automation, 15 explicitly selected playlists)
+
+This is a **separate** source from the 17 YouTube playlists. The exporter
+uses the **15 explicitly approved playlist IDs** in `SELECTED_PLAYLIST_IDS`
+inside `export_deezer.py`. It navigates **directly** to each listed playlist URL, reading its title and
+expected track count from that playlist page; the library grid is never opened. Followed/editorial or
+algorithmically suggested playlists are **not** exported, even if visible in
+the library. If any configured playlist cannot be opened or its own header has no usable
+track count, the export fails rather than silently publishing a partial inventory.
+New personal playlists must be added to the allowlist manually. Listening
+history and favorite tracks outside playlists are not exported.
+
+Prerequisite: Python 3.10+ and Playwright's Chromium browser.
+
+```bash
+make deezer-login    # once: open Chromium, sign in to Deezer, press Enter
+make deezer-run      # export the 15 selected Deezer playlists to a local snapshot
+make deezer-publish  # publish latest verified Deezer snapshot (Drive + current Git branch)
+make deezer-backup   # export then publish; no YouTube API key needed
+make test
+```
+
+Deezer's login is held in a **dedicated persistent Chromium profile** at
+`~/.local/share/deezer-playlist-backup/browser` (outside this repository).
+**Never copy or commit that directory, browser cookies, or passwords.**
+When Deezer expires your session, run `make deezer-login` again. Headless
+export is optional via `.venv/bin/python export_deezer.py --headless`;
+headful mode is the default for easier debugging. Captcha/login protections
+must be resolved interactively.
+
+Deezer local snapshots are stored in
+`~/backups/youtube-music-extractor/deezer/<timestamp>/`, optionally overridden
+with `DEEZER_SNAPSHOT_DIR`. The publisher keeps providers separate:
+
+- Local: `~/backups/youtube-music-extractor/deezer/<timestamp>/`
+- Drive: `gdrive:youtube-music-extractor/deezer/snapshots/<timestamp>/`
+- GitHub (current branch): `data/deezer/snapshots/<timestamp>/`
+
+Every Deezer snapshot contains `songs.json`, `songs.csv` and SHA-256
+`manifest.json`. It preserves playlist ID, playlist title, position,
+displayed track title, artist, album, and a track URL when exposed in the DOM.
+Diff counts use title/artist/album/playlist because stable Deezer track IDs are
+**not guaranteed by this interface**. This preserves metadata, not audio.
+
+**Completeness is fail-closed:** the exporter checks each playlist's displayed
+track count against rows extracted, requires contiguous ARIA indices, and will
+not create a successful snapshot after a partial extraction. A change to the
+Deezer web DOM, transient loading problems, a playlist changed during the run,
+or a login expiry may therefore require manually inspecting and rerunning.
+The selected playlist catalog is fixed in the code; every configured URL must
+load and expose an authoritative count to pass validation.
+
+**Do not run YouTube `make publish` to publish Deezer snapshots.**
+Use `make deezer-publish`. Drive OAuth is still best-effort due to the
+previously documented Testing-mode refresh token expiration. Published
+snapshots on this public GitHub repository reveal playlist titles and listening
+interests; consider repository visibility before using this feature.
+
+This uses the rendered Deezer interface, not an official Deezer API. Selectors
+may need maintenance when the website changes. It intentionally makes no
+attempt to bypass authentication, CAPTCHA, rate limits or access controls.
+
+
+### Chrome via CDP (alternative to Playwright's Chromium)
+
+Google may block sign-in within Playwright-launched Chromium. The exporter
+also supports attaching to a **running Chrome with a local debugging port**:
+
+```bash
+# In a separate terminal, launch Chrome with an isolated automation profile.
+# Keep the debugging port bound to loopback ONLY.
+mkdir -p ~/.local/share/deezer-playlist-backup/chrome-cdp
+google-chrome --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 \
+  --user-data-dir="$HOME/.local/share/deezer-playlist-backup/chrome-cdp" \
+  'https://www.deezer.com/pt/library/playlists'
+
+# Sign into Deezer in this Chrome window, then from the project:
+make deezer-cdp
+make deezer-publish   # only after the local snapshot validates
+```
+
+**Important:** Chrome 136+ **does not honor remote debugging against the
+normal/default Chrome user-data directory**. This means CDP cannot simply
+attach to an already running, normally launched Chrome and reuse that default
+profile's login. The isolated CDP Chrome profile requires a Deezer sign-in
+at least once. If Google blocks sign-in again, do not bypass Google's account
+security: use an approved Deezer sign-in method or a browser extension running
+in your already authenticated browser instead.
+
+The CDP endpoint grants powerful control of the browser, including session
+access. Never expose port 9222 to the network or share this profile. When the
+extraction finishes, close the separate debugging-enabled Chrome window to
+end CDP exposure. The extractor closes only its own tab, not the Chrome
+process.
+
+References:
+- https://developer.chrome.com/blog/remote-debugging-port/
+- https://playwright.dev/python/docs/api/class-browsertype#browser-type-connect-over-cdp
+
+
+### Deezer direct-page count limitation (2026-10-16)
+
+The Deezer playlist page currently exposes its title through a hidden
+`#naboo_playlist_title`, but the attempted header selectors did **not** expose
+a reliable total track count. The previous `h1` visible wait and subsequent
+header-count requirement broke direct-page extraction. Those gates have been
+removed. The extractor now starts scrolling as soon as track rows exist,
+performs three slow passes, and rejects gaps between observed ARIA indices.
+
+**Important:** contiguous observed positions alone do **not** prove that the
+last song was captured. Until an independent count source is implemented,
+these local Deezer snapshots are marked `status: unverified` and the normal
+publisher refuses to push them to Drive or GitHub. Do not treat this as a
+complete, verified backup or manually change the status. The 15 URL allowlist
+remains enforced and the library grid is never visited.
